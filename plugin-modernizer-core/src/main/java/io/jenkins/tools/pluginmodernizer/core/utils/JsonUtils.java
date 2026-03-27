@@ -17,7 +17,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
@@ -137,11 +139,25 @@ public class JsonUtils {
      * @param path The path to the JSON file
      */
     public static void toJsonFile(Object object, Path path) {
+        Path tempFile = null;
         try {
             LOG.debug("Writing JSON file to {}", path);
             String prettyJson = JsonUtils.prettyPrint(gson.toJson(object));
-            FileUtils.writeStringToFile(path.toFile(), prettyJson, StandardCharsets.UTF_8);
+
+            // Atomic write using a temp file
+            tempFile = Files.createTempFile(path.getParent(), path.getFileName().toString(), ".tmp");
+            Files.writeString(tempFile, prettyJson, StandardCharsets.UTF_8);
+            Files.move(tempFile, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+
         } catch (IOException e) {
+            // Clean up temp file on failure
+            if (tempFile != null) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException cleanEx) {
+                    LOG.error("Failed to clean up temp file {}", tempFile, cleanEx);
+                }
+            }
             throw new ModernizerException("Unable to write JSON file due to IO error", e);
         }
     }
@@ -182,15 +198,15 @@ public class JsonUtils {
     public static <T> T fromUrl(URL url, Class<T> clazz) {
         try {
             HttpClient client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
             HttpRequest request =
-                    HttpRequest.newBuilder().GET().uri(url.toURI()).build();
+            HttpRequest.newBuilder().GET().uri(url.toURI()).build();
             LOG.debug("Fetching data from: {}", url);
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 throw new ModernizerException(
-                        "Failed to get JSON data. Received response code: " + response.statusCode());
+                "Failed to get JSON data. Received response code: " + response.statusCode());
             }
             LOG.debug("Fetched data from: {}", url);
             return JsonUtils.fromJson(response.body(), clazz);

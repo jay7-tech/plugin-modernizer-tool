@@ -56,11 +56,7 @@ public class CacheManager {
     public void init() {
         if (!Files.exists(location)) {
             try {
-                Path parent = location.getParent();
-                if (parent != null && !Files.exists(parent)) {
-                    Files.createDirectory(parent);
-                }
-                Files.createDirectory(location);
+                Files.createDirectories(location);
                 LOG.debug("Creating cache at {}", location);
             } catch (IOException e) {
                 throw new ModernizerException("Unable to create cache", e);
